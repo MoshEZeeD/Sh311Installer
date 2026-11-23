@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<translate xmlns:android="http://schemas.android.com/apk/res/android"
-    android:duration="240"
-    android:fromYDelta="100%"
-    android:interpolator="@android:interpolator/decelerate_cubic"
-    android:toYDelta="0" />
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:interpolator/overshoot">
+    <translate
+        android:duration="520"
+        android:fromYDelta="28%"
+        android:toYDelta="0" />
+    <scale
+        android:duration="520"
+        android:fromXScale="0.96"
+        android:fromYScale="0.96"
+        android:pivotX="50%"
+        android:pivotY="100%"
+        android:toXScale="1"
+        android:toYScale="1" />
+</set>

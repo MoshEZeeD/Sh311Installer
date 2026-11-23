@@ -6,7 +6,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="24dp">
+    android:padding="18dp">
 
     <!-- App header -->
     <LinearLayout
@@ -58,7 +58,7 @@
         android:id="@+id/tvQuestion"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="18dp"
+        android:layout_marginTop="12dp"
         android:textAppearance="?attr/textAppearanceBodyLarge"
         tools:text="Do you want to install this app?" />
 
@@ -89,12 +89,67 @@
         android:textColor="?attr/colorOnSurfaceVariant"
         tools:text="Backend: Shizuku" />
 
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/installOptionsSection"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="?attr/selectableItemBackground"
+        app:cardCornerRadius="14dp"
+        app:cardElevation="0dp"
+        app:strokeColor="?attr/colorOutlineVariant"
+        app:strokeWidth="1dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="11dp">
+
+            <TextView
+                android:id="@+id/tvInstallOptions"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textAppearance="?attr/textAppearanceBodyLarge"
+                android:textColor="?attr/colorOnSurface"
+                tools:text="Install options" />
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_expand_more"
+                app:tint="?attr/colorPrimary" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnApkReport"
+        style="@style/Widget.Material3.Button.TextButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:minWidth="0dp"
+        android:paddingStart="0dp"
+        android:paddingEnd="0dp"
+        android:text="@string/apk_report"
+        android:visibility="gone"
+        app:icon="@drawable/ic_info"
+        app:iconGravity="textStart"
+        app:iconTint="?attr/colorPrimary" />
+
     <!-- Progress -->
     <LinearLayout
         android:id="@+id/progressSection"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="18dp"
+        android:layout_marginTop="12dp"
         android:orientation="vertical"
         android:visibility="gone">
 
@@ -106,7 +161,7 @@
             android:max="1000"
             app:trackCornerRadius="4dp" />
 
-        <TextView
+        <com.google.android.material.textview.MaterialTextView
             android:id="@+id/tvInstallStatus"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -114,6 +169,41 @@
             android:textAppearance="?attr/textAppearanceBodySmall"
             android:textColor="?attr/colorOnSurfaceVariant"
             tools:text="Writing split 1 of 3…" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnFullLog"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="0dp"
+                android:paddingStart="0dp"
+                android:paddingEnd="12dp"
+                android:text="@string/full_log"
+                android:visibility="gone"
+                app:icon="@drawable/ic_open_in_full"
+                app:iconGravity="textStart"
+                app:iconTint="?attr/colorPrimary" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDetails"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="0dp"
+                android:paddingStart="0dp"
+                android:paddingEnd="0dp"
+                android:text="@string/details"
+                android:visibility="gone"
+                app:icon="@drawable/ic_expand_more"
+                app:iconGravity="textStart"
+                app:iconTint="?attr/colorPrimary" />
+        </LinearLayout>
     </LinearLayout>
 
     <TextView
@@ -126,18 +216,6 @@
         android:visibility="gone"
         tools:text="Signature mismatch…" />
 
-    <!-- Expandable log -->
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnDetails"
-        style="@style/Widget.Material3.Button.TextButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="@string/details"
-        android:visibility="gone"
-        app:icon="@drawable/ic_expand_more"
-        app:iconGravity="textStart" />
-
     <LinearLayout
         android:id="@+id/detailsSection"
         android:layout_width="match_parent"
@@ -145,7 +223,16 @@
         android:orientation="vertical"
         android:visibility="gone">
 
+        <com.google.android.material.textview.MaterialTextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="6dp"
+            android:text="@string/log"
+            android:textAppearance="?attr/textAppearanceLabelLarge"
+            android:textColor="?attr/colorOnSurfaceVariant" />
+
         <ScrollView
+            android:id="@+id/logScroll"
             android:layout_width="match_parent"
             android:layout_height="160dp"
             android:background="@drawable/bg_log"
@@ -157,9 +244,23 @@
                 android:layout_height="wrap_content"
                 android:fontFamily="monospace"
                 android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="#F2FFFFFF"
+                android:shadowColor="#4000E676"
+                android:shadowRadius="6"
                 android:textIsSelectable="true"
                 tools:text="pm install-create…" />
         </ScrollView>
+
+        <TextView
+            android:id="@+id/tvLogCursor"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:fontFamily="monospace"
+            android:text="▌"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textColor="#00E676"
+            android:visibility="gone" />
     </LinearLayout>
 
     <com.google.android.material.button.MaterialButton
@@ -177,7 +278,7 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="18dp"
+        android:layout_marginTop="12dp"
         android:gravity="end"
         android:orientation="horizontal">
 

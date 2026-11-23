@@ -36,6 +36,12 @@
         </activity>
 
         <activity
+            android:name=".InstallLogActivity"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.ShellInstaller" />
+
+        <activity
             android:name=".InstallActivity"
             android:exported="true"
             android:excludeFromRecents="true"

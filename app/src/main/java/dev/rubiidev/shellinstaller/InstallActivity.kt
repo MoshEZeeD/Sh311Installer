@@ -1,16 +1,23 @@
 package dev.rubiidev.shellinstaller
 
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.content.Intent
 import android.content.pm.PackageInfo
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -24,7 +31,11 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dev.rubiidev.shellinstaller.backend.Backends
 import dev.rubiidev.shellinstaller.databinding.ActivityInstallBinding
 import dev.rubiidev.shellinstaller.install.ApkInfo
+import dev.rubiidev.shellinstaller.install.ApkReportDialog
 import dev.rubiidev.shellinstaller.install.InstallManager
+import dev.rubiidev.shellinstaller.install.InstallOptionsDialog
+import dev.rubiidev.shellinstaller.install.Prefs
+import dev.rubiidev.shellinstaller.util.LogFormatter
 import dev.rubiidev.shellinstaller.util.formatSize
 import dev.rubiidev.shellinstaller.util.versionCodeCompat
 import kotlinx.coroutines.Dispatchers
@@ -47,8 +58,13 @@ class InstallActivity : AppCompatActivity() {
     private lateinit var binding: ActivityInstallBinding
 
     private var detailsExpanded = false
+    private var detailsAutoExpanded = false
     private var boundInfo: ApkInfo? = null
     private var installedInfo: PackageInfo? = null
+    private val revealHandler = Handler(Looper.getMainLooper())
+    private var revealRunnable: Runnable? = null
+    private var fullLog = ""
+    private var revealIndex = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,6 +75,8 @@ class InstallActivity : AppCompatActivity() {
         applyWindowInsets()
         setupButtons()
         observeState()
+        observeLog()
+        startCursorBlink()
         handleIntent(intent)
 
         onBackPressedDispatcher.addCallback(this) { handleBack() }
@@ -79,6 +97,7 @@ class InstallActivity : AppCompatActivity() {
         // panel (whether or not the window draws behind the bar on a given device).
         window.navigationBarColor =
             MaterialColors.getColor(binding.root, com.google.android.material.R.attr.colorSurface)
+        applyGlassBackground()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
         }
@@ -87,6 +106,18 @@ class InstallActivity : AppCompatActivity() {
         val width = min(metrics.widthPixels, maxWidth)
         window.setLayout(width, WindowManager.LayoutParams.WRAP_CONTENT)
         window.setGravity(Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+    }
+
+    private fun applyGlassBackground() {
+        val root = binding.root
+        val surface = MaterialColors.getColor(root, com.google.android.material.R.attr.colorSurface)
+        val onSurface = MaterialColors.getColor(root, com.google.android.material.R.attr.colorOnSurface)
+        val radius = 26f * resources.displayMetrics.density
+        val glass = GradientDrawable()
+        glass.cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
+        glass.setColor(ColorUtils.setAlphaComponent(surface, 216))
+        glass.setStroke(1, ColorUtils.setAlphaComponent(onSurface, 36))
+        root.background = glass
     }
 
     private fun applyWindowInsets() {
@@ -114,6 +145,10 @@ class InstallActivity : AppCompatActivity() {
             detailsExpanded = !detailsExpanded
             render(InstallManager.state.value)
         }
+        binding.btnFullLog.setOnClickListener { openFullLog() }
+        binding.btnApkReport.setOnClickListener {
+            infoOf(InstallManager.state.value)?.let { ApkReportDialog.show(this, it) }
+        }
         binding.btnUninstall.setOnClickListener { confirmUninstall() }
     }
 
@@ -125,6 +160,27 @@ class InstallActivity : AppCompatActivity() {
         }
     }
 
+    private fun observeLog() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                InstallManager.logFlow.collect { log ->
+                    val state = InstallManager.state.value
+                    if (state is InstallManager.State.Installing && detailsExpanded && Prefs.terminalEffects(this@InstallActivity)) {
+                        setLogText(log)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun startCursorBlink() {
+        ObjectAnimator.ofFloat(binding.tvLogCursor, View.ALPHA, 1f, 0.15f).apply {
+            duration = 550
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.REVERSE
+        }.start()
+    }
+
     private fun handleIntent(intent: Intent) {
         val uris = collectUris(intent)
         if (uris.isEmpty()) {
@@ -134,6 +190,9 @@ class InstallActivity : AppCompatActivity() {
         boundInfo = null
         installedInfo = null
         detailsExpanded = false
+        detailsAutoExpanded = false
+        cancelReveal()
+        setupInstallOptions()
         InstallManager.prepare(this, uris)
     }
 
@@ -204,7 +263,7 @@ class InstallActivity : AppCompatActivity() {
                 binding.tvQuestion.visibility = View.VISIBLE
                 binding.tvQuestion.setText(R.string.install_success_popup)
                 binding.tvError.visibility = View.GONE
-                hideProgress()
+                showResult(true, getString(R.string.install_success))
                 setButtons(
                     negative = R.string.done to { InstallManager.reset(); finish() },
                     positive = R.string.open_app to { openInstalledApp() }
@@ -215,7 +274,7 @@ class InstallActivity : AppCompatActivity() {
                 binding.tvQuestion.setText(R.string.install_failed_popup)
                 binding.tvError.visibility = View.VISIBLE
                 binding.tvError.text = state.message
-                hideProgress()
+                showResult(false, getString(R.string.install_failed))
                 setButtons(
                     negative = R.string.close to { InstallManager.reset(); finish() },
                     positive = if (state.info != null) R.string.retry to { InstallManager.install(this) } else null
@@ -231,6 +290,7 @@ class InstallActivity : AppCompatActivity() {
 
         renderDetails(state)
         renderUninstall(state, info)
+        renderInstallOptions(state)
     }
 
     private fun bindAppInfo(info: ApkInfo) {
@@ -297,6 +357,13 @@ class InstallActivity : AppCompatActivity() {
         binding.tvInstallStatus.text = status
     }
 
+    private fun showResult(success: Boolean, status: String) {
+        binding.progressSection.visibility = View.VISIBLE
+        binding.progress.isIndeterminate = false
+        binding.progress.progress = if (success) 1000 else 0
+        binding.tvInstallStatus.text = status
+    }
+
     private fun hideProgress() {
         binding.progressSection.visibility = View.GONE
     }
@@ -319,23 +386,143 @@ class InstallActivity : AppCompatActivity() {
 
     private fun renderDetails(state: InstallManager.State) {
         val logText = when (state) {
-            is InstallManager.State.Installing -> InstallManager.logSnapshot()
+            is InstallManager.State.Installing -> InstallManager.logFlow.value
             is InstallManager.State.Success -> state.log
             is InstallManager.State.Failed -> state.log
             else -> ""
         }
         val hasLog = logText.isNotBlank()
+        val isTerminal = state is InstallManager.State.Installing ||
+            state is InstallManager.State.Success ||
+            state is InstallManager.State.Failed
+        if (hasLog && isTerminal && !detailsAutoExpanded) {
+            detailsExpanded = true
+            detailsAutoExpanded = true
+        }
+        binding.btnFullLog.visibility = if (hasLog) View.VISIBLE else View.GONE
         binding.btnDetails.visibility = if (hasLog) View.VISIBLE else View.GONE
         binding.btnDetails.setText(if (detailsExpanded) R.string.hide_details else R.string.details)
         binding.btnDetails.setIconResource(if (detailsExpanded) R.drawable.ic_expand_less else R.drawable.ic_expand_more)
         binding.detailsSection.visibility = if (hasLog && detailsExpanded) View.VISIBLE else View.GONE
-        binding.tvLog.text = logText
+        binding.tvLogCursor.visibility = if (state is InstallManager.State.Installing && hasLog) View.VISIBLE else View.GONE
+        if (hasLog && detailsExpanded) {
+            setLogText(logText, animate = state is InstallManager.State.Installing)
+        } else {
+            cancelReveal()
+            binding.tvLog.text = ""
+        }
+    }
+
+    private fun setLogText(logText: String, animate: Boolean = true) {
+        if (!Prefs.terminalEffects(this) || !animate) {
+            cancelReveal()
+            binding.tvLog.text = if (Prefs.terminalEffects(this)) LogFormatter.format(logText) else logText
+            binding.logScroll.post { binding.logScroll.fullScroll(View.FOCUS_DOWN) }
+            return
+        }
+        if (fullLog != logText) {
+            fullLog = logText
+            if (revealIndex > logText.length) revealIndex = 0
+        }
+        startReveal()
+    }
+
+    private fun startReveal() {
+        revealRunnable?.let { revealHandler.removeCallbacks(it) }
+        val runnable = object : Runnable {
+            override fun run() {
+                val remaining = fullLog.length - revealIndex
+                if (remaining <= 0) {
+                    updateReveal(fullLog.length)
+                    return
+                }
+                revealIndex += (18 + remaining / 30).coerceAtMost(remaining)
+                updateReveal(revealIndex)
+                revealHandler.postDelayed(this, 10)
+            }
+        }
+        revealRunnable = runnable
+        revealHandler.post(runnable)
+    }
+
+    private fun updateReveal(count: Int) {
+        val shown = fullLog.substring(0, count.coerceIn(0, fullLog.length))
+        binding.tvLog.text = if (Prefs.terminalEffects(this)) LogFormatter.format(shown) else shown
+        binding.logScroll.post { binding.logScroll.fullScroll(View.FOCUS_DOWN) }
+    }
+
+    private fun cancelReveal() {
+        revealRunnable?.let { revealHandler.removeCallbacks(it) }
+        revealRunnable = null
+        fullLog = ""
+        revealIndex = 0
     }
 
     private fun renderUninstall(state: InstallManager.State, info: ApkInfo?) {
         val canUninstall = info?.packageName != null && installedInfo != null &&
             (state is InstallManager.State.Ready || state is InstallManager.State.Failed)
         binding.btnUninstall.visibility = if (canUninstall) View.VISIBLE else View.GONE
+    }
+
+    private fun renderInstallOptions(state: InstallManager.State) {
+        binding.installOptionsSection.visibility = if (state is InstallManager.State.Ready) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+        binding.btnApkReport.visibility = if (infoOf(state) != null) View.VISIBLE else View.GONE
+    }
+
+    private fun setupInstallOptions() {
+        val options = Prefs.options(this)
+        binding.tvInstallOptions.setText(summarizeInstallOptions(options))
+        binding.installOptionsSection.setOnClickListener {
+            InstallOptionsDialog.show(this, Prefs.options(this)) { saved ->
+                Prefs.saveOptions(this, saved)
+                binding.tvInstallOptions.setText(summarizeInstallOptions(saved))
+            }
+        }
+        binding.tvInstallOptions.setOnClickListener {
+            binding.installOptionsSection.performClick()
+        }
+    }
+
+    private fun summarizeInstallOptions(o: Prefs.Options): String {
+        var count = 0
+        count += listOf(
+            o.allowDowngrade, o.grantAll, o.allowTestOnly, o.dontKillApp, o.restrictPermissions,
+            o.updateOwnership, o.neuterAds, o.skipVerification, o.forceQueryable,
+            o.ignoreDexoptProfile, o.disableAutoInstallDependencies, o.enableRollback, o.apex,
+        ).count { it }
+        count += listOf(
+            o.targetUser != Prefs.TargetUser.CURRENT,
+            o.installLocation != Prefs.InstallLocation.UNSPECIFIED,
+            o.installReason != Prefs.InstallReason.UNSPECIFIED,
+            o.packageSource != Prefs.PackageSource.UNSPECIFIED,
+            o.installMode != Prefs.InstallMode.FULL,
+            o.stagedMode != Prefs.StagedMode.DEFAULT,
+            o.installerPackage != null,
+            o.originatingUri != null,
+            o.referrerUri != null,
+            o.forceUuid != null,
+            o.expectedPackage != null,
+            o.abiOverride != null,
+            o.dexoptCompilerFilter != null,
+            o.partialInheritPackage != null,
+        ).count { it }
+        return if (count == 0) getString(R.string.no_extra_options) else getString(R.string.extra_options_count, count)
+    }
+
+    private fun openFullLog() {
+        val state = InstallManager.state.value
+        val logText = when (state) {
+            is InstallManager.State.Installing -> InstallManager.logFlow.value
+            is InstallManager.State.Success -> state.log
+            is InstallManager.State.Failed -> state.log
+            else -> return
+        }
+        if (logText.isBlank()) return
+        startActivity(Intent(this, InstallLogActivity::class.java).putExtra(InstallLogActivity.EXTRA_LOG, logText))
     }
 
     private fun infoOf(state: InstallManager.State): ApkInfo? = when (state) {

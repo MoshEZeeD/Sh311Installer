@@ -79,6 +79,16 @@
     <string name="close">Close</string>
     <string name="details">Details</string>
     <string name="hide_details">Hide details</string>
+    <string name="full_log">Full log</string>
+    <string name="install_log">Installation log</string>
+    <string name="install_log_hint">Live package-manager output, written files, session events, and result details.</string>
+    <string name="install_options">Install options</string>
+    <string name="no_extra_options">No extra options</string>
+    <string name="extra_options_count">%1$d extra option(s) selected</string>
+    <string name="opt_allow_test">Allow test-only package</string>
+    <string name="opt_all_users">Install for all users</string>
+    <string name="opt_dont_kill">Do not kill running app</string>
+    <string name="opt_update_ownership">Request update ownership</string>
     <string name="uninstall_existing">Uninstall existing app</string>
     <string name="uninstall_confirm_title">Uninstall %1$s?</string>
     <string name="uninstall_confirm_msg">This removes the app and its data for the current user. This cannot be undone.</string>
@@ -120,4 +130,8 @@
     <string name="root_denied">Root access is not available.</string>
     <string name="uninstalled">Uninstalled.</string>
     <string name="cancelled">Cancelled</string>
+
+    <!-- Report & animation -->
+    <string name="apk_report">APK report</string>
+    <string name="terminal_fx">Live terminal effects</string>
 </resources>

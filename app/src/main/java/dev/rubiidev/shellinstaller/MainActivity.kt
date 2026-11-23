@@ -83,6 +83,9 @@ class MainActivity : AppCompatActivity() {
             Prefs.setBackendPreference(this, Prefs.BackendPreference.entries[position])
             renderActive()
         }
+
+        binding.switchTerminalFx.isChecked = Prefs.terminalEffects(this)
+        binding.switchTerminalFx.setOnCheckedChangeListener { _, value -> Prefs.setTerminalEffects(this, value) }
     }
 
     private fun setupButtons() {

@@ -24,6 +24,7 @@ data class ApkInfo(
     val isBundle: Boolean,
     val fileName: String,
     val icon: Drawable?,
+    val report: ApkReport,
     val workDir: File
 )
 
@@ -81,6 +82,26 @@ class ApkPreparer(private val context: Context) {
         } catch (t: Throwable) {
             null
         }
+        val report = runCatching {
+            ApkAnalyzer.analyze(context, base, apks, isBundle)
+        }.getOrElse { throwable ->
+            ApkReport(
+                packageName = packageInfo?.packageName ?: "",
+                versionName = packageInfo?.versionName,
+                versionCode = packageInfo?.versionCodeCompat() ?: 0L,
+                minSdk = appInfo?.minSdkVersion ?: 0,
+                targetSdk = appInfo?.targetSdkVersion ?: 0,
+                permissions = emptyList(),
+                dangerousPermissions = emptyList(),
+                features = emptyList(),
+                abis = emptyList(),
+                signerCount = 0,
+                signerSummary = "unavailable",
+                signatureStatus = SignatureStatus.UNKNOWN,
+                adFindings = emptyList(),
+                warnings = listOf("APK analysis failed: ${throwable.message}"),
+            )
+        }
 
         return ApkInfo(
             label = label,
@@ -96,6 +117,7 @@ class ApkPreparer(private val context: Context) {
             isBundle = isBundle,
             fileName = copied.first().name,
             icon = icon,
+            report = report,
             workDir = workDir
         )
     }

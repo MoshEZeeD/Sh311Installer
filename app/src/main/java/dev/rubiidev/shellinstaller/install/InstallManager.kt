@@ -33,6 +33,9 @@ object InstallManager {
     private val _state = MutableStateFlow<State>(State.Idle)
     val state: StateFlow<State> = _state
 
+    private val _logFlow = MutableStateFlow("")
+    val logFlow: StateFlow<String> = _logFlow
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var current: ApkInfo? = null
 
@@ -63,6 +66,7 @@ object InstallManager {
         val app = context.applicationContext
         val options = Prefs.options(app)
         cancelled = false
+        _logFlow.value = ""
         scope.launch { doInstall(app, info, options) }
     }
 
@@ -80,6 +84,10 @@ object InstallManager {
 
     private suspend fun doInstall(context: Context, info: ApkInfo, options: Prefs.Options) {
         log.setLength(0)
+        _logFlow.value = ""
+        appendLog("Package: ${info.label} (${info.packageName ?: "unknown"})")
+        appendLog("Version: ${info.versionName ?: "?"} (${info.versionCode})")
+        appendLog("Files: ${info.splitCount} · Size: ${info.totalSize} bytes · Bundle: ${info.isBundle}")
         val backend = try {
             Backends.resolve(context)
         } catch (t: Throwable) {
@@ -92,17 +100,14 @@ object InstallManager {
         val wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ShellInstaller:install")
         wakeLock.acquire(10 * 60 * 1000L)
         try {
-            var error = runSession(context, backend, info, options, bypass = false)
-            if (error != null &&
-                options.bypassLowTargetSdk &&
-                Build.VERSION.SDK_INT >= 34 &&
-                error.contains("INSTALL_FAILED_DEPRECATED_SDK_VERSION")
-            ) {
-                appendLog("Legacy app blocked; retrying with --bypass-low-target-sdk-block…")
-                error = runSession(context, backend, info, options, bypass = true)
-            }
+            val error = runSession(context, backend, info, options)
             if (error == null) {
                 appendLog("Success")
+                if (options.neuterAds) {
+                    appendLog("Ad/tracker neuter enabled; applying permission lockdown…")
+                    AdNeuter.neuter(context, backend, info.packageName.orEmpty(), info.report)
+                        .forEach(::appendLog)
+                }
                 _state.value = State.Success(info, info.packageName.orEmpty(), log.toString())
                 info.workDir.deleteRecursively()
                 if (current === info) current = null
@@ -129,20 +134,17 @@ object InstallManager {
         context: Context,
         backend: InstallBackend,
         info: ApkInfo,
-        options: Prefs.Options,
-        bypass: Boolean
+        options: Prefs.Options
     ): String? {
         var sessionId: Int? = null
         var committed = false
         try {
             updateProgress(info, 0.02f, "Creating install session…")
-            val createCmd = mutableListOf("pm", "install-create", "-r", "-i", context.packageName, "--user", "current")
-            if (options.allowDowngrade) createCmd.add("-d")
-            if (options.grantAll) createCmd.add("-g")
-            if (bypass) createCmd.add("--bypass-low-target-sdk-block")
-
+            val createCmd = createCommand(context, info, options)
             val create = backend.exec(createCmd)
-            appendLog("$ " + createCmd.joinToString(" ") + "\n" + create.output.trim())
+            appendLog("$ " + createCmd.joinToString(" "))
+            appendLog("Backend: ${backend.displayName}")
+            appendLog(create.output.trim())
             if (!create.looksSuccessful) return "install-create failed: ${create.output.trim()}"
             sessionId = parseSessionId(create.output)
                 ?: return "Could not parse install session id: ${create.output.trim()}"
@@ -153,6 +155,9 @@ object InstallManager {
                 checkCancelled()
                 val status = "Writing ${apk.name} (${index + 1}/${info.splitCount})…"
                 updateProgress(info, 0.05f + 0.9f * (completedBytes.toFloat() / total), status)
+                appendLog("$ pm install-write -S ${apk.length()} $sessionId ${apk.name} -")
+                appendLog("Source: ${apk.absolutePath}")
+                appendLog("Size: ${apk.length()} bytes")
                 var fileWritten = 0L
                 val writeCmd = listOf(
                     "pm", "install-write", "-S", apk.length().toString(),
@@ -167,8 +172,10 @@ object InstallManager {
                     }
                 }
                 completedBytes += apk.length()
+                appendLog("Bytes written: ${apk.length()}")
+                appendLog(result.output.trim().ifBlank { "No output" })
                 if (!result.looksSuccessful) {
-                    appendLog("install-write failed: ${result.output.trim()}")
+                    appendLog("install-write failed")
                     return humanError(parseFailure(result.output))
                 }
             }
@@ -176,8 +183,12 @@ object InstallManager {
             checkCancelled()
             updateProgress(info, 0.97f, "Committing…")
             val commit = backend.exec(listOf("pm", "install-commit", sessionId.toString()))
-            appendLog("$ pm install-commit $sessionId\n" + commit.output.trim())
-            if (!commit.looksSuccessful) return humanError(parseFailure(commit.output))
+            appendLog("$ pm install-commit $sessionId")
+            appendLog(commit.output.trim().ifBlank { "No output" })
+            if (!commit.looksSuccessful) {
+                appendLog("install-commit failed")
+                return humanError(parseFailure(commit.output))
+            }
             committed = true
             updateProgress(info, 1f, "Done")
             return null
@@ -195,6 +206,78 @@ object InstallManager {
         }
     }
 
+    private fun createCommand(context: Context, info: ApkInfo, options: Prefs.Options): List<String> {
+        val cmd = mutableListOf("pm", "install-create", "-r", "-S", info.totalSize.coerceAtLeast(1L).toString())
+        val installer = options.installerPackage?.takeIf { it.isNotBlank() } ?: context.packageName
+        cmd += listOf("-i", installer)
+
+        when (options.targetUser) {
+            Prefs.TargetUser.CURRENT -> cmd += listOf("--user", "current")
+            Prefs.TargetUser.ALL -> cmd += listOf("--user", "all")
+            Prefs.TargetUser.OWNER -> cmd += listOf("--user", "owner")
+            Prefs.TargetUser.CUSTOM -> {
+                val id = options.customUserId
+                cmd += if (id != null && id >= 0) listOf("--user", id.toString()) else listOf("--user", "current")
+            }
+        }
+
+        if (options.installLocation != Prefs.InstallLocation.UNSPECIFIED) {
+            cmd += listOf("--install-location", options.installLocation.code.toString())
+        }
+        options.forceUuid?.takeIf { it.isNotBlank() }?.let { cmd += listOf("--force-uuid", it) }
+        options.expectedPackage?.takeIf { it.isNotBlank() }?.let { cmd += listOf("--pkg", it) }
+        options.originatingUri?.takeIf { it.isNotBlank() }?.let { cmd += listOf("--originating-uri", it) }
+        options.referrerUri?.takeIf { it.isNotBlank() }?.let { cmd += listOf("--referrer", it) }
+        if (options.installReason != Prefs.InstallReason.UNSPECIFIED) {
+            cmd += listOf("--install-reason", options.installReason.code.toString())
+        }
+        if (Build.VERSION.SDK_INT >= 35 && options.packageSource != Prefs.PackageSource.UNSPECIFIED) {
+            cmd += listOf("--package-source", options.packageSource.code.toString())
+        }
+        options.partialInheritPackage?.takeIf { it.isNotBlank() }?.let { cmd += listOf("-p", it) }
+
+        when (options.installMode) {
+            Prefs.InstallMode.INSTANT -> if (Build.VERSION.SDK_INT >= 24) cmd.add("--instant")
+            Prefs.InstallMode.PRELOAD -> if (Build.VERSION.SDK_INT >= 26) cmd.add("--preload")
+            Prefs.InstallMode.FULL -> Unit
+        }
+
+        when (options.stagedMode) {
+            Prefs.StagedMode.STAGED -> if (Build.VERSION.SDK_INT >= 29) cmd.add("--staged")
+            Prefs.StagedMode.NON_STAGED -> if (Build.VERSION.SDK_INT >= 29) cmd.add("--non-staged")
+            Prefs.StagedMode.FORCE_NON_STAGED -> if (Build.VERSION.SDK_INT >= 29) cmd.add("--force-non-staged")
+            Prefs.StagedMode.DEFAULT -> Unit
+        }
+        options.stagedReadyTimeoutMs?.let {
+            if (Build.VERSION.SDK_INT >= 29) cmd += listOf("--staged-ready-timeout", it.toString())
+        }
+        if (options.enableRollback && Build.VERSION.SDK_INT >= 29) {
+            cmd += listOf("--enable-rollback", options.rollbackPolicy.code.toString())
+        }
+        if (options.apex && Build.VERSION.SDK_INT >= 29) cmd.add("--apex")
+        options.abiOverride?.takeIf { it.isNotBlank() }?.let { cmd += listOf("--abi", it) }
+        if (options.skipVerification && Build.VERSION.SDK_INT >= 30) cmd.add("--skip-verification")
+        if (options.forceQueryable && Build.VERSION.SDK_INT >= 30) cmd.add("--force-queryable")
+        if (options.restrictPermissions && Build.VERSION.SDK_INT >= 29) cmd.add("--restrict-permissions")
+        if (options.ignoreDexoptProfile && Build.VERSION.SDK_INT >= 35) cmd.add("--ignore-dexopt-profile")
+        options.dexoptCompilerFilter?.takeIf { it.isNotBlank() }?.let {
+            if (Build.VERSION.SDK_INT >= 35) cmd += listOf("--dexopt-compiler-filter", it)
+        }
+        if (options.disableAutoInstallDependencies && Build.VERSION.SDK_INT >= 36) {
+            cmd.add("--disable-auto-install-dependencies")
+        }
+        if (options.updateOwnership && Build.VERSION.SDK_INT >= 34) cmd.add("--update-ownership")
+        if (options.bypassLowTargetSdk && Build.VERSION.SDK_INT >= 34) {
+            cmd.add("--bypass-low-target-sdk-block")
+        }
+
+        if (options.allowDowngrade) cmd.add("-d")
+        if (options.grantAll) cmd.add("-g")
+        if (options.allowTestOnly) cmd.add("-t")
+        if (options.dontKillApp) cmd.add("--dont-kill")
+        return cmd
+    }
+
     private fun checkCancelled() {
         if (cancelled) throw CancellationException("Cancelled")
     }
@@ -205,6 +288,7 @@ object InstallManager {
 
     private fun appendLog(line: String) {
         log.append(line).append('\n')
+        _logFlow.value = log.toString()
     }
 
     private fun parseSessionId(output: String): Int? =
