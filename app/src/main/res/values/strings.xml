@@ -112,6 +112,7 @@
     <string name="backend_line">Backend: %1$s</string>
     <string name="no_backend_short">none ready</string>
     <string name="log">Log</string>
+    <string name="log_credit">Built by MoshEZeeD</string>
     <string name="working">Working…</string>
 
     <!-- Errors / toasts -->

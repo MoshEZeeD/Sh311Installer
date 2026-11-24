@@ -1,15 +1,16 @@
 package dev.rubiidev.shellinstaller
 
-import android.animation.ObjectAnimator
-import android.animation.ValueAnimator
 import android.content.Intent
 import android.content.pm.PackageInfo
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
+import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -36,6 +37,7 @@ import dev.rubiidev.shellinstaller.install.InstallManager
 import dev.rubiidev.shellinstaller.install.InstallOptionsDialog
 import dev.rubiidev.shellinstaller.install.Prefs
 import dev.rubiidev.shellinstaller.util.LogFormatter
+import dev.rubiidev.shellinstaller.util.LogReveal
 import dev.rubiidev.shellinstaller.util.formatSize
 import dev.rubiidev.shellinstaller.util.versionCodeCompat
 import kotlinx.coroutines.Dispatchers
@@ -61,22 +63,23 @@ class InstallActivity : AppCompatActivity() {
     private var detailsAutoExpanded = false
     private var boundInfo: ApkInfo? = null
     private var installedInfo: PackageInfo? = null
-    private val revealHandler = Handler(Looper.getMainLooper())
-    private var revealRunnable: Runnable? = null
-    private var fullLog = ""
-    private var revealIndex = 0
+    private lateinit var logReveal: LogReveal
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityInstallBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        logReveal = LogReveal(
+            onUpdate = { binding.tvLog.text = it },
+            onScroll = { binding.logScroll.post { binding.logScroll.fullScroll(View.FOCUS_DOWN) } }
+        )
         setFinishOnTouchOutside(false)
         configureWindow()
         applyWindowInsets()
         setupButtons()
+        setupLogCredit()
         observeState()
         observeLog()
-        startCursorBlink()
         handleIntent(intent)
 
         onBackPressedDispatcher.addCallback(this) { handleBack() }
@@ -152,6 +155,21 @@ class InstallActivity : AppCompatActivity() {
         binding.btnUninstall.setOnClickListener { confirmUninstall() }
     }
 
+    private fun setupLogCredit() {
+        val full = getString(R.string.log_credit)
+        val name = "MoshEZeeD"
+        val start = full.lastIndexOf(name)
+        if (start < 0) {
+            binding.tvLogCredit.text = full
+            return
+        }
+        val credit = SpannableString(full)
+        val primary = MaterialColors.getColor(binding.root, com.google.android.material.R.attr.colorPrimary)
+        credit.setSpan(ForegroundColorSpan(primary), start, full.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        credit.setSpan(StyleSpan(Typeface.BOLD), start, full.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        binding.tvLogCredit.text = credit
+    }
+
     private fun observeState() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -166,19 +184,16 @@ class InstallActivity : AppCompatActivity() {
                 InstallManager.logFlow.collect { log ->
                     val state = InstallManager.state.value
                     if (state is InstallManager.State.Installing && detailsExpanded && Prefs.terminalEffects(this@InstallActivity)) {
-                        setLogText(log)
+                        setLogText(log, animate = true)
                     }
                 }
             }
         }
     }
 
-    private fun startCursorBlink() {
-        ObjectAnimator.ofFloat(binding.tvLogCursor, View.ALPHA, 1f, 0.15f).apply {
-            duration = 550
-            repeatCount = ValueAnimator.INFINITE
-            repeatMode = ValueAnimator.REVERSE
-        }.start()
+    override fun onDestroy() {
+        if (::logReveal.isInitialized) logReveal.cancel()
+        super.onDestroy()
     }
 
     private fun handleIntent(intent: Intent) {
@@ -231,8 +246,14 @@ class InstallActivity : AppCompatActivity() {
         binding.tvVersion.visibility = if (showInfo) View.VISIBLE else View.GONE
         binding.tvInstalled.visibility =
             if (showInfo && state is InstallManager.State.Ready) View.VISIBLE else View.GONE
-        binding.tvMeta.visibility =
-            if (showInfo && (state is InstallManager.State.Ready || state is InstallManager.State.Installing)) View.VISIBLE else View.GONE
+        val showMeta = showInfo && when (state) {
+            is InstallManager.State.Ready,
+            is InstallManager.State.Installing,
+            is InstallManager.State.Success,
+            is InstallManager.State.Failed -> true
+            else -> false
+        }
+        binding.tvMeta.visibility = if (showMeta) View.VISIBLE else View.GONE
         binding.tvBackendLine.visibility = binding.tvMeta.visibility
 
         when (state) {
@@ -404,58 +425,33 @@ class InstallActivity : AppCompatActivity() {
         binding.btnDetails.setText(if (detailsExpanded) R.string.hide_details else R.string.details)
         binding.btnDetails.setIconResource(if (detailsExpanded) R.drawable.ic_expand_less else R.drawable.ic_expand_more)
         binding.detailsSection.visibility = if (hasLog && detailsExpanded) View.VISIBLE else View.GONE
-        binding.tvLogCursor.visibility = if (state is InstallManager.State.Installing && hasLog) View.VISIBLE else View.GONE
         if (hasLog && detailsExpanded) {
             setLogText(logText, animate = state is InstallManager.State.Installing)
-        } else {
-            cancelReveal()
-            binding.tvLog.text = ""
         }
     }
 
-    private fun setLogText(logText: String, animate: Boolean = true) {
-        if (!Prefs.terminalEffects(this) || !animate) {
-            cancelReveal()
-            binding.tvLog.text = if (Prefs.terminalEffects(this)) LogFormatter.format(logText) else logText
+    private fun setLogText(logText: String, animate: Boolean) {
+        val fx = Prefs.terminalEffects(this)
+        if (!fx) {
+            logReveal.cancel()
+            binding.tvLog.text = logText
             binding.logScroll.post { binding.logScroll.fullScroll(View.FOCUS_DOWN) }
             return
         }
-        if (fullLog != logText) {
-            fullLog = logText
-            if (revealIndex > logText.length) revealIndex = 0
+        // Keep typing while installing, and keep typing the tail into Success/Failed
+        // instead of snapping the full log in at once. Only show instantly when this is
+        // a fresh view of an already-finished log.
+        if (animate || logReveal.isContinuationOf(logText)) {
+            logReveal.setLog(logText)
+        } else {
+            logReveal.cancel()
+            binding.tvLog.text = LogFormatter.format(logText)
+            binding.logScroll.post { binding.logScroll.fullScroll(View.FOCUS_DOWN) }
         }
-        startReveal()
-    }
-
-    private fun startReveal() {
-        revealRunnable?.let { revealHandler.removeCallbacks(it) }
-        val runnable = object : Runnable {
-            override fun run() {
-                val remaining = fullLog.length - revealIndex
-                if (remaining <= 0) {
-                    updateReveal(fullLog.length)
-                    return
-                }
-                revealIndex += (18 + remaining / 30).coerceAtMost(remaining)
-                updateReveal(revealIndex)
-                revealHandler.postDelayed(this, 10)
-            }
-        }
-        revealRunnable = runnable
-        revealHandler.post(runnable)
-    }
-
-    private fun updateReveal(count: Int) {
-        val shown = fullLog.substring(0, count.coerceIn(0, fullLog.length))
-        binding.tvLog.text = if (Prefs.terminalEffects(this)) LogFormatter.format(shown) else shown
-        binding.logScroll.post { binding.logScroll.fullScroll(View.FOCUS_DOWN) }
     }
 
     private fun cancelReveal() {
-        revealRunnable?.let { revealHandler.removeCallbacks(it) }
-        revealRunnable = null
-        fullLog = ""
-        revealIndex = 0
+        logReveal.cancel()
     }
 
     private fun renderUninstall(state: InstallManager.State, info: ApkInfo?) {

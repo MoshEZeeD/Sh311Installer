@@ -91,7 +91,7 @@ object InstallManager {
         val backend = try {
             Backends.resolve(context)
         } catch (t: Throwable) {
-            _state.value = State.Failed(info, friendly(t), "")
+            _state.value = State.Failed(info, friendly(t), log.toString())
             return
         }
         appendLog("Backend: ${backend.displayName}")
