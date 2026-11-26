@@ -20,6 +20,13 @@ instead of the standard on-device installer. That means:
 
 ---
 
+## Screenshots
+
+![Screenshot 1](screenshots/screenshot-1.jpg)
+![Screenshot 2](screenshots/screenshot-2.jpg)
+![Screenshot 3](screenshots/screenshot-3.jpg)
+![Screenshot 4](screenshots/screenshot-4.jpg)
+
 ## Features
 
 - **Three backends**
