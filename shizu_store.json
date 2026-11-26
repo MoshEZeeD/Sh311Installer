@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "app_name": "Shell Installer",
+  "package_name": "dev.rubiidev.shellinstaller",
+  "short_description": "Install APKs and split bundles with shell privileges via Shizuku, on-device Wireless ADB or root — installer-identity spoofing, security scan and ad neuter.",
+  "icon_url": "https://raw.githubusercontent.com/MoshEZeeD/Sh311Installer/master/icon.png",
+  "category": "System Tools",
+  "detailed_description": "Shell Installer installs APKs with **shell-level privileges** — the same path as `adb install` — using Shizuku, on-device Wireless ADB, or root. No PC required.\n\n- Split bundles (.apk, .apks, .xapk, .apkm, .zip)\n- Installer-identity spoofing presets (Google Play, Galaxy Store, AppGallery, Amazon)\n- Offline security verdict + optional VirusTotal lookup\n- Ad/tracker neuter (permission revoke + app-op restrictions)\n- Live OLED-style install log",
+  "developer_message": "Built by MoshEZeeD — feedback and bug reports welcome on GitHub.",
+  "version_name": "1.2.2",
+  "version_code": 6,
+  "min_sdk": 26,
+  "target_sdk": 35,
+  "license": "GPL-3.0",
+  "requires_shizuku": true,
+  "open_source": true,
+  "tags": ["installer", "apk", "shizuku", "adb", "root", "sideload", "package-installer", "split-apk"],
+  "changelog": "v1.2.2 — faster prepare, simplified install options, security scan, ad neuter improvements.",
+  "screenshots": [
+    "https://raw.githubusercontent.com/MoshEZeeD/Sh311Installer/master/screenshots/screenshot-1.jpg",
+    "https://raw.githubusercontent.com/MoshEZeeD/Sh311Installer/master/screenshots/screenshot-2.jpg",
+    "https://raw.githubusercontent.com/MoshEZeeD/Sh311Installer/master/screenshots/screenshot-3.jpg",
+    "https://raw.githubusercontent.com/MoshEZeeD/Sh311Installer/master/screenshots/screenshot-4.jpg"
+  ],
+  "repo_url": "https://github.com/MoshEZeeD/Sh311Installer",
+  "download_url": "https://github.com/MoshEZeeD/Sh311Installer/releases/download/v1.2.2/ShellInstaller-v1.2.2.apk",
+  "developer": {
+    "name": "MoshEZeeD",
+    "account_url": "https://github.com/MoshEZeeD",
+    "github": "https://github.com/MoshEZeeD"
+  }
+}
