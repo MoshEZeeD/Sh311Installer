@@ -56,6 +56,23 @@ object AdNeuter {
                 lines += "  revoke $short failed: ${exec.output.trim().ifBlank { "unknown" }}"
             }
         }
+
+        // App-op restrictions that limit what ad/tracking SDKs can do even with permissions
+        // intact: advertising ID access, usage-stats access and unrestricted background runs.
+        for (op in APP_OPS) {
+            val result = runCatching {
+                backend.exec(listOf("appops", "set", packageName, op, "ignore"))
+            }
+            if (result.isSuccess && result.getOrThrow().looksSuccessful) {
+                lines += "  restricted app-op $op"
+            }
+        }
         return lines
     }
+
+    private val APP_OPS = listOf(
+        "AD_ID",
+        "GET_USAGE_STATS",
+        "RUN_ANY_IN_BACKGROUND",
+    )
 }

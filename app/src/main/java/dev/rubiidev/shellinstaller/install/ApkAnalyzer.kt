@@ -71,17 +71,19 @@ object ApkAnalyzer {
         abis.addAll(detectAbis(allApks))
 
         val dangerous = permissions.filter { isDangerous(pm, it) }.sorted()
-        val signatureStatus = signatureStatus(pm, packageName, baseApk)
+        val signatureStatus = signatureStatus(pm, packageName, baseInfo)
         val signers = signingCertSha256(baseInfo)
-        val signerSummary = signerSummary(pm, baseApk)
-        val adFindings = allApks.flatMap { AdTrackerScanner.scan(it) }.distinctBy { it.sdk to it.evidence }
+        val signerSummary = signerSummary(baseInfo)
+        // Ad/tracker scanning is deliberately NOT done here: it decompresses dex bytes and is
+        // too slow for the prepare path. ApkReportDialog runs it lazily on demand instead.
+        val adFindings = emptyList<AdFinding>()
         val warnings = buildWarnings(
             minSdk = minSdk,
             targetSdk = targetSdk,
             signatureStatus = signatureStatus,
             signerCount = signers.size,
             dangerousCount = dangerous.size,
-            adCount = adFindings.size,
+            adCount = 0,
             splitCount = allApks.size,
             isBundle = isBundle,
             packageName = packageName,
@@ -131,15 +133,13 @@ object ApkAnalyzer {
             info.protectionLevel and PermissionInfo.PROTECTION_DANGEROUS != 0
         }.getOrDefault(false)
 
-    private fun signatureStatus(pm: PackageManager, packageName: String, baseApk: File): SignatureStatus {
+    private fun signatureStatus(pm: PackageManager, packageName: String, apkInfo: PackageInfo?): SignatureStatus {
         val installed = runCatching {
             pm.getPackageInfo(packageName, packageInfoFlags())
         }.getOrNull() ?: return SignatureStatus.NEW
         val installedSigners = signingCertSha256(installed)
         if (installedSigners.isEmpty()) return SignatureStatus.UNKNOWN
-        val apkSigners = signingCertSha256(
-            runCatching { pm.getPackageArchiveInfo(baseApk.absolutePath, packageInfoFlags()) }.getOrNull()
-        )
+        val apkSigners = signingCertSha256(apkInfo)
         if (apkSigners.isEmpty()) return SignatureStatus.UNKNOWN
         return if (installedSigners == apkSigners) SignatureStatus.MATCH else SignatureStatus.MISMATCH
     }
@@ -155,9 +155,8 @@ object ApkAnalyzer {
         return signatures?.map { sha256(it.toByteArray()) }?.toSet() ?: emptySet()
     }
 
-    private fun signerSummary(pm: PackageManager, apk: File): String {
-        val info = runCatching { pm.getPackageArchiveInfo(apk.absolutePath, packageInfoFlags()) }.getOrNull()
-            ?: return "unavailable"
+    private fun signerSummary(info: PackageInfo?): String {
+        if (info == null) return "unavailable"
         val signatures: Array<Signature>? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             info.signingInfo?.apkContentsSigners
         } else {

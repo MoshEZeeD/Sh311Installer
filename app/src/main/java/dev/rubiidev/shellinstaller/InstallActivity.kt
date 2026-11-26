@@ -484,29 +484,28 @@ class InstallActivity : AppCompatActivity() {
     }
 
     private fun summarizeInstallOptions(o: Prefs.Options): String {
-        var count = 0
-        count += listOf(
-            o.allowDowngrade, o.grantAll, o.allowTestOnly, o.dontKillApp, o.restrictPermissions,
-            o.updateOwnership, o.neuterAds, o.skipVerification, o.forceQueryable,
-            o.ignoreDexoptProfile, o.disableAutoInstallDependencies, o.enableRollback, o.apex,
-        ).count { it }
-        count += listOf(
-            o.targetUser != Prefs.TargetUser.CURRENT,
-            o.installLocation != Prefs.InstallLocation.UNSPECIFIED,
-            o.installReason != Prefs.InstallReason.UNSPECIFIED,
-            o.packageSource != Prefs.PackageSource.UNSPECIFIED,
-            o.installMode != Prefs.InstallMode.FULL,
-            o.stagedMode != Prefs.StagedMode.DEFAULT,
-            o.installerPackage != null,
-            o.originatingUri != null,
-            o.referrerUri != null,
-            o.forceUuid != null,
-            o.expectedPackage != null,
-            o.abiOverride != null,
-            o.dexoptCompilerFilter != null,
-            o.partialInheritPackage != null,
-        ).count { it }
-        return if (count == 0) getString(R.string.no_extra_options) else getString(R.string.extra_options_count, count)
+        val parts = mutableListOf<String>()
+        val preset = when {
+            o.installerPackage == "com.android.vending" -> "Google Play"
+            o.installerPackage == "com.sec.android.app.samsungapps" -> "Galaxy Store"
+            o.installerPackage == "com.huawei.appmarket" -> "AppGallery"
+            o.installerPackage == "com.amazon.venezia" -> "Amazon Appstore"
+            o.installerPackage == null && o.packageSource == Prefs.PackageSource.LOCAL_FILE -> "Local file"
+            o.installerPackage != null || o.packageSource != Prefs.PackageSource.UNSPECIFIED ||
+                o.installReason != Prefs.InstallReason.UNSPECIFIED ||
+                o.originatingUri != null || o.referrerUri != null -> "Custom source"
+            else -> null
+        }
+        if (preset != null) parts += preset
+        if (o.bypassLowTargetSdk) parts += "bypass old SDK"
+        if (o.allowDowngrade) parts += "downgrade"
+        if (o.grantAll) parts += "grant permissions"
+        if (o.dontKillApp) parts += "no kill"
+        if (o.restrictPermissions) parts += "restrict perms"
+        if (o.updateOwnership) parts += "update owner"
+        if (o.allowTestOnly) parts += "test-only"
+        if (o.neuterAds) parts += "ad neuter"
+        return parts.joinToString(" · ").ifBlank { getString(R.string.no_extra_options) }
     }
 
     private fun openFullLog() {

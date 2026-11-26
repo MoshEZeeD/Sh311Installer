@@ -95,6 +95,7 @@ object InstallManager {
             return
         }
         appendLog("Backend: ${backend.displayName}")
+        updateProgress(info, 0.01f, "Using ${backend.displayName}")
 
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         val wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ShellInstaller:install")

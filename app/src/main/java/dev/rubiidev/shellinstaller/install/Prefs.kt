@@ -19,6 +19,7 @@ object Prefs {
     private const val KEY_OPTIONS_JSON = "install_options_json"
 
     private const val KEY_TERMINAL_FX = "terminal_fx"
+    private const val KEY_VT_KEY = "virustotal_api_key"
 
     enum class BackendPreference { AUTO, SHIZUKU, ADB, ROOT }
 
@@ -65,7 +66,7 @@ object Prefs {
     data class Options(
         val allowDowngrade: Boolean = false,
         val grantAll: Boolean = false,
-        val bypassLowTargetSdk: Boolean = true,
+        val bypassLowTargetSdk: Boolean = false,
         val allowTestOnly: Boolean = false,
         val dontKillApp: Boolean = false,
         val restrictPermissions: Boolean = false,
@@ -212,7 +213,7 @@ object Prefs {
         return Options(
             allowDowngrade = p.getBoolean(KEY_DOWNGRADE, false),
             grantAll = p.getBoolean(KEY_GRANT, false),
-            bypassLowTargetSdk = p.getBoolean(KEY_BYPASS, true),
+            bypassLowTargetSdk = p.getBoolean(KEY_BYPASS, false),
             allowTestOnly = p.getBoolean(KEY_ALLOW_TEST, false),
             dontKillApp = p.getBoolean(KEY_DONT_KILL, false),
             updateOwnership = p.getBoolean(KEY_UPDATE_OWNERSHIP, false),
@@ -252,5 +253,12 @@ object Prefs {
 
     fun setTerminalEffects(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_TERMINAL_FX, enabled).apply()
+    }
+
+    fun virusTotalApiKey(context: Context): String =
+        prefs(context).getString(KEY_VT_KEY, "").orEmpty()
+
+    fun setVirusTotalApiKey(context: Context, key: String) {
+        prefs(context).edit().putString(KEY_VT_KEY, key.trim()).apply()
     }
 }

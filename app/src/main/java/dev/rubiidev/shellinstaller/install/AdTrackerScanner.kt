@@ -12,7 +12,7 @@ import kotlin.math.min
  */
 object AdTrackerScanner {
 
-    private data class Sdk(val name: String, val category: String, val patterns: List<ByteArray>)
+    private data class Sdk(val name: String, val category: String, val patterns: List<String>)
 
     private val SDKS = listOf(
         sdk("Google AdMob / GMA", "Ads", "com.google.android.gms.ads", "com.google.ads", "ads.admob"),
@@ -65,23 +65,31 @@ object AdTrackerScanner {
     )
 
     private val SDK_BY_NAME = SDKS.associateBy { it.name }
-    private val MAX_PATTERN = SDKS.flatMap { it.patterns }.maxOf { it.size }
-    private val CHUNK_SIZE = 256 * 1024
+    private val MAX_PATTERN = SDKS.flatMap { it.patterns }.maxOf { it.length }
+    private val CHUNK_SIZE = 512 * 1024
+
+    // Total bytes of dex/resources we are willing to decompress per APK. Normal apps sit far
+    // below this; huge bundles stop early instead of stalling preparation for minutes.
+    private const val MAX_SCAN_BYTES = 256L * 1024 * 1024
+    private const val MAX_ENTRY_BYTES = 64L * 1024 * 1024
 
     fun scan(apk: File): List<AdFinding> {
         if (!apk.isFile) return emptyList()
         val evidence = LinkedHashMap<String, LinkedHashSet<String>>()
+        var budget = MAX_SCAN_BYTES
         runCatching {
             ZipFile(apk).use { zip ->
                 val entries = zip.entries()
-                while (entries.hasMoreElements()) {
+                while (entries.hasMoreElements() && budget > 0) {
                     val entry = entries.nextElement()
                     if (entry.isDirectory) continue
                     val name = entry.name
                     if (!name.endsWith(".dex") && name != "resources.arsc" && name != "AndroidManifest.xml") continue
-                    zip.getInputStream(entry).use { input ->
-                        scanStream(input, name, evidence)
+                    val limit = minOf(MAX_ENTRY_BYTES, budget)
+                    val consumed = zip.getInputStream(entry).use { input ->
+                        scanStream(input, name, evidence, limit)
                     }
+                    budget -= consumed
                 }
             }
         }
@@ -94,47 +102,35 @@ object AdTrackerScanner {
         }
     }
 
-    private fun scanStream(input: InputStream, entryName: String, evidence: LinkedHashMap<String, LinkedHashSet<String>>) {
+    private fun scanStream(
+        input: InputStream,
+        entryName: String,
+        evidence: LinkedHashMap<String, LinkedHashSet<String>>,
+        limit: Long,
+    ): Long {
         val buffer = ByteArray(CHUNK_SIZE)
-        var tail = ByteArray(0)
-        while (true) {
-            val read = input.read(buffer)
+        var consumed = 0L
+        // ISO-8859-1 maps bytes 1:1 to chars, so ASCII patterns still match while
+        // String.contains uses a much faster search than a manual byte loop.
+        var tail = ""
+        while (consumed < limit) {
+            val want = min(buffer.size.toLong(), limit - consumed).toInt()
+            val read = input.read(buffer, 0, want)
             if (read <= 0) break
-            val chunk = if (tail.isEmpty()) buffer.copyOf(read) else tail + buffer.copyOf(read)
+            consumed += read
+            val chunk = tail + String(buffer, 0, read, Charsets.ISO_8859_1)
             for (sdk in SDKS) {
                 if (evidence.containsKey(sdk.name)) continue
-                val hit = sdk.patterns.any { contains(chunk, it) }
-                if (hit) {
+                if (sdk.patterns.any { chunk.contains(it) }) {
                     evidence.getOrPut(sdk.name) { linkedSetOf() }.add(entryName)
                 }
             }
-            val keep = min(MAX_PATTERN - 1, chunk.size)
-            tail = if (keep <= 0) ByteArray(0) else chunk.copyOfRange(chunk.size - keep, chunk.size)
+            val keep = min(MAX_PATTERN - 1, chunk.length)
+            tail = chunk.substring(chunk.length - keep)
         }
-    }
-
-    private fun contains(haystack: ByteArray, needle: ByteArray): Boolean {
-        if (needle.isEmpty() || haystack.size < needle.size) return false
-        var index = indexOfByte(haystack, needle[0], 0)
-        val last = haystack.size - needle.size
-        while (index >= 0 && index <= last) {
-            var i = 1
-            while (i < needle.size && haystack[index + i] == needle[i]) i++
-            if (i == needle.size) return true
-            index = indexOfByte(haystack, needle[0], index + 1)
-        }
-        return false
-    }
-
-    private fun indexOfByte(haystack: ByteArray, value: Byte, from: Int): Int {
-        var i = from
-        while (i < haystack.size) {
-            if (haystack[i] == value) return i
-            i++
-        }
-        return -1
+        return consumed
     }
 
     private fun sdk(name: String, category: String, vararg patterns: String): Sdk =
-        Sdk(name, category, patterns.map { it.toByteArray(Charsets.UTF_8) })
+        Sdk(name, category, patterns.toList())
 }

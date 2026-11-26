@@ -89,7 +89,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupButtons() {
-        binding.btnChooseFile.setOnClickListener { pickFiles.launch(arrayOf("*/*")) }
+        binding.btnChooseFile.setOnClickListener {
+            pickFiles.launch(
+                arrayOf(
+                    "application/vnd.android.package-archive",
+                    "application/zip",
+                    "application/octet-stream",
+                )
+            )
+        }
 
         binding.btnShizukuOpen.setOnClickListener { ShizukuBackend.openManager(this) }
         binding.btnShizukuGrant.setOnClickListener { ShizukuBackend.requestPermission() }

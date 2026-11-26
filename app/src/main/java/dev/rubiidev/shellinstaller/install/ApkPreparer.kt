@@ -38,19 +38,11 @@ class ApkPreparer(private val context: Context) {
     fun prepare(uris: List<Uri>): ApkInfo {
         val workDir = File(context.cacheDir, "install-" + System.currentTimeMillis()).apply { mkdirs() }
         val copied = ArrayList<File>()
-        for ((index, uri) in uris.withIndex()) {
-            val name = displayName(uri) ?: "file-$index.apk"
-            val dest = File(workDir, uniqueName(workDir, sanitize(name)))
-            val input = context.contentResolver.openInputStream(uri)
-                ?: throw IOException("Cannot open the selected file.")
-            input.use { source -> dest.outputStream().use { source.copyTo(it) } }
-            copied.add(dest)
-        }
-        if (copied.isEmpty()) throw IOException("No files were selected.")
-
+        val displayNames = ArrayList<String>()
         val apks = ArrayList<File>()
         var isBundle = false
-        for (file in copied) {
+
+        fun ingest(file: File) {
             ZipFile(file).use { zip ->
                 val entries = zip.entries().asSequence().filter { !it.isDirectory }.toList()
                 val hasManifest = entries.any { it.name == "AndroidManifest.xml" }
@@ -62,13 +54,31 @@ class ApkPreparer(private val context: Context) {
                         for (entry in apkEntries) {
                             val outName = uniqueName(workDir, sanitize(entry.name.substringAfterLast('/')))
                             val out = File(workDir, outName)
-                            zip.getInputStream(entry).use { source -> out.outputStream().use { source.copyTo(it) } }
+                            zip.getInputStream(entry).use { source -> out.outputStream().use { source.copyTo(it, bufferSize = 1024 * 1024) } }
                             apks.add(out)
                         }
                     }
                     else -> throw IOException("Not an APK or a supported split bundle: ${file.name}")
                 }
             }
+        }
+
+        for ((index, uri) in uris.withIndex()) {
+            val name = displayName(uri) ?: "file-$index.apk"
+            displayNames += name
+            // file:// sources can be read in place — copying a multi-GB APK into the cache
+            // would double the I/O for no benefit. Bundles still get extracted below.
+            val direct = directFileOrNull(uri)
+            if (direct != null) {
+                ingest(direct)
+                continue
+            }
+            val dest = File(workDir, uniqueName(workDir, sanitize(name)))
+            val input = context.contentResolver.openInputStream(uri)
+                ?: throw IOException("Cannot open the selected file.")
+            input.use { source -> dest.outputStream().use { source.copyTo(it, bufferSize = 1024 * 1024) } }
+            copied.add(dest)
+            ingest(dest)
         }
         if (apks.isEmpty()) throw IOException("No APK files were found.")
 
@@ -115,7 +125,7 @@ class ApkPreparer(private val context: Context) {
             baseApk = base,
             allApks = apks,
             isBundle = isBundle,
-            fileName = copied.first().name,
+            fileName = sanitize(displayNames.firstOrNull() ?: apks.first().name),
             icon = icon,
             report = report,
             workDir = workDir
@@ -132,6 +142,12 @@ class ApkPreparer(private val context: Context) {
             ?: apks.maxByOrNull { it.length() }
             ?: apks.first()
     }
+
+    private fun directFileOrNull(uri: Uri): File? = runCatching {
+        if (uri.scheme != "file") return null
+        val f = File(uri.path ?: return null)
+        if (f.isFile && f.canRead()) f else null
+    }.getOrNull()
 
     private fun displayName(uri: Uri): String? = try {
         context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
