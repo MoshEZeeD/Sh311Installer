@@ -71,7 +71,8 @@ class InstallActivity : AppCompatActivity() {
         setContentView(binding.root)
         logReveal = LogReveal(
             onUpdate = { binding.tvLog.text = it },
-            onScroll = { binding.logScroll.post { binding.logScroll.fullScroll(View.FOCUS_DOWN) } }
+            onScroll = { scrollLogToBottom() },
+            onDone = { binding.tvLog.setTextIsSelectable(true) }
         )
         setFinishOnTouchOutside(false)
         configureWindow()
@@ -439,18 +440,30 @@ class InstallActivity : AppCompatActivity() {
         if (!fx) {
             logReveal.cancel()
             binding.tvLog.text = logText
-            binding.logScroll.post { binding.logScroll.fullScroll(View.FOCUS_DOWN) }
+            binding.tvLog.setTextIsSelectable(true)
+            scrollLogToBottom()
             return
         }
         // Keep typing while installing, and keep typing the tail into Success/Failed
         // instead of snapping the full log in at once. Only show instantly when this is
         // a fresh view of an already-finished log.
         if (animate || logReveal.isContinuationOf(logText)) {
+            // Selection handles make every text swap expensive — disable while typing.
+            binding.tvLog.setTextIsSelectable(false)
             logReveal.setLog(logText, hurry = hurry)
         } else {
             logReveal.cancel()
             binding.tvLog.text = LogFormatter.format(logText)
-            binding.logScroll.post { binding.logScroll.fullScroll(View.FOCUS_DOWN) }
+            binding.tvLog.setTextIsSelectable(true)
+            scrollLogToBottom()
+        }
+    }
+
+    private fun scrollLogToBottom() {
+        val sv = binding.logScroll
+        sv.post {
+            val child = sv.getChildAt(0) ?: return@post
+            sv.scrollTo(0, (child.bottom + sv.paddingBottom - sv.height).coerceAtLeast(0))
         }
     }
 

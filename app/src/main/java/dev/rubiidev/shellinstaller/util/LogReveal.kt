@@ -10,7 +10,8 @@ import android.os.Looper
  */
 class LogReveal(
     private val onUpdate: (CharSequence) -> Unit,
-    private val onScroll: () -> Unit = {}
+    private val onScroll: () -> Unit = {},
+    private val onDone: () -> Unit = {}
 ) {
 
     private val handler = Handler(Looper.getMainLooper())
@@ -53,6 +54,7 @@ class LogReveal(
                 if (remaining <= 0) {
                     resolved = source.length
                     push(glint = false)
+                    onDone()
                     return
                 }
                 resolved += if (hurry) {
@@ -79,7 +81,8 @@ class LogReveal(
 
     private fun push(glint: Boolean = true) {
         val shown = source.substring(0, resolved)
-        onUpdate(LogFormatter.format(shown, if (glint) GLINT_TAIL else 0))
+        // No glint while hurrying — the bright band strobes too fast at 8ms ticks.
+        onUpdate(LogFormatter.format(shown, if (glint && !hurry) GLINT_TAIL else 0))
         // Scrolling every tick makes the view jump once per frame — throttle it and
         // always scroll on the final (glint-free) push so the end state is visible.
         if (!glint || ++pushes % SCROLL_EVERY == 0) onScroll()

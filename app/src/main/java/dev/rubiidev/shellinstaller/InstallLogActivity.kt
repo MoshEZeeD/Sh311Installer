@@ -1,7 +1,6 @@
 package dev.rubiidev.shellinstaller
 
 import android.os.Bundle
-import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -32,7 +31,8 @@ class InstallLogActivity : AppCompatActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         logReveal = LogReveal(
             onUpdate = { binding.tvFullLog.text = it },
-            onScroll = { binding.root.post { binding.root.fullScroll(View.FOCUS_DOWN) } }
+            onScroll = { scrollToBottom() },
+            onDone = { binding.tvFullLog.setTextIsSelectable(true) }
         )
         applyWindowInsets()
         val initialLog = intent.getStringExtra(EXTRA_LOG) ?: InstallManager.logSnapshot()
@@ -93,11 +93,21 @@ class InstallLogActivity : AppCompatActivity() {
         // A fresh view of a finished log shows instantly instead of replaying.
         val animating = fx && (installing || logReveal.isContinuationOf(log))
         if (animating) {
+            binding.tvFullLog.setTextIsSelectable(false)
             logReveal.setLog(log, hurry = !installing)
         } else {
             logReveal.cancel()
             binding.tvFullLog.text = if (fx) LogFormatter.format(log) else log
-            binding.root.post { binding.root.fullScroll(View.FOCUS_DOWN) }
+            binding.tvFullLog.setTextIsSelectable(true)
+            scrollToBottom()
+        }
+    }
+
+    private fun scrollToBottom() {
+        val sv = binding.root
+        sv.post {
+            val child = sv.getChildAt(0) ?: return@post
+            sv.scrollTo(0, (child.bottom + sv.paddingBottom - sv.height).coerceAtLeast(0))
         }
     }
 }
