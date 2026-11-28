@@ -1,5 +1,16 @@
 # Shell Installer
 
+<div align="center">
+
+[![Release](https://img.shields.io/github/v/release/MoshEZeeD/Sh311Installer?label=Release&color=green&logo=github)](https://github.com/MoshEZeeD/Sh311Installer/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/MoshEZeeD/Sh311Installer/total?label=Downloads&color=orange&logo=bookmeter)](https://github.com/MoshEZeeD/Sh311Installer/releases)
+[![License](https://img.shields.io/github/license/MoshEZeeD/Sh311Installer?label=License&color=blue)](LICENSE)
+[![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)]()
+[![Kotlin](https://img.shields.io/badge/Kotlin-100%25-7F52FF?logo=kotlin&logoColor=white)]()
+[![Shizuku](https://img.shields.io/badge/Shizuku-supported-00B0FF?logo=android)](https://shizuku.rikka.app/)
+
+</div>
+
 A package-installer alternative for Android that installs APKs with **shell-level privileges** using
 **[Shizuku](https://shizuku.rikka.app/)**, **on-device Wireless ADB**, or **root** — no PC required.
 
