@@ -3,6 +3,13 @@
 A package-installer alternative for Android that installs APKs with **shell-level privileges** using
 **[Shizuku](https://shizuku.rikka.app/)**, **on-device Wireless ADB**, or **root** — no PC required.
 
+> **Fork notice:** This is a community fork of
+> [rubiidev18alt/PackageInstaller](https://github.com/rubiidev18alt/PackageInstaller), maintained by
+> [**MoshEZeeD**](https://github.com/MoshEZeeD). The upstream project does the heavy lifting —
+> Shizuku / Wireless-ADB / root `pm` install sessions — while this fork adds a security scanner,
+> ad/tracker neutering, installer-identity presets, a terminal-style install experience, and more
+> (see [What this fork adds](#what-this-fork-adds)).
+
 Because installs run as the shell user (exactly like `adb install`), they go through `pm` directly
 instead of the standard on-device installer. That means:
 
@@ -39,9 +46,18 @@ instead of the standard on-device installer. That means:
   browser can hand APKs to it.
 - **Split bundles** — installs `.apk`, `.apks`, `.xapk`, `.apkm`, and `.zip` bundles, or multiple
   selected split APKs, using a proper `pm install-create / install-write / install-commit` session.
+- **Security scan** — an offline verdict (SAFE / SUSPICIOUS / POTENTIALLY HARMFUL) from permissions,
+  components and known-bad signatures, plus an optional **VirusTotal** lookup by APK hash.
+- **Ad/tracker neuter** — after install, optionally strips ad & tracker SDK permissions and applies
+  `appops` restrictions (ad ID, usage stats, background activity) automatically.
+- **Installer-identity presets** — spoof the installer package as Google Play, Galaxy Store,
+  AppGallery, Amazon, a local file, or none — with auto-filled source/reason/URI fields and a
+  human-readable summary on the install card.
 - **System-style install popup** — opening an APK slides up a bottom sheet anchored to the bottom
   of the screen, just like Samsung's One UI installer: app icon + name, an install / update /
   downgrade prompt, Cancel / Install, live progress, and Done / Open when finished.
+- **Terminal-style install log** — a typewriter-reveal `pm` session log with per-line coloring,
+  auto-scroll, and a "hurry" mode that finishes typing in sync with the install completing.
 - **App preview** — icon, label, package name, version, size, min/target SDK, and an
   update / downgrade / same-version comparison against what's installed.
 - **Options** — allow downgrade (`-d`), grant all runtime permissions (`-g`), and an automatic retry
@@ -50,6 +66,28 @@ instead of the standard on-device installer. That means:
 - Material 3 UI with dynamic color, light/dark themes, a dashboard that shows which backend is
   ready at a glance, and collapsible Wireless-ADB setup.
 
+## What this fork adds
+
+On top of the upstream `rubiidev18alt/PackageInstaller` codebase, this fork (by MoshEZeeD) includes:
+
+- **Offline security verdict + VirusTotal integration** (`SecurityScan.kt`) — quick trust check
+  before installing, with an optional hash lookup against VirusTotal (API key stored locally).
+- **Ad/tracker neuter** (`AdNeuter.kt`) — revokes ad/tracker-related runtime permissions *and*
+  sets `appops` restrictions (`AD_ID`, `GET_USAGE_STATS`, `RUN_ANY_IN_BACKGROUND`) so apps can't
+  quietly re-enable them.
+- **Installer-identity presets** (`InstallOptionsDialog.kt`) — one-tap presets for Google Play,
+  Galaxy Store, AppGallery and Amazon that fill installer package, source, reason and originating
+  URI; a "Reset to defaults" option; and a readable summary instead of a raw option count.
+- **Typewriter install log** (`LogReveal.kt` / `LogFormatter.kt`) — progressive character reveal
+  with terminal colors, a glint shimmer on the typing frontier, throttled auto-scroll to the last
+  line, and hurry-mode so the log lands exactly when the install finishes.
+- **Faster APK preparation** (`ApkPreparer.kt`) — `file://` inputs install in place (no cache
+  copy), dex/ad scanning is byte-capped and runs lazily inside the APK report instead of blocking
+  selection, and bundles are still extracted as needed.
+- **New app icon & branding** — custom launcher artwork (adaptive icon) and store listing assets.
+- **Smaller UX fixes** — APK-only file picker MIME types, flicker-free log rendering, and assorted
+  polish.
+
 ## Requirements
 
 - Android 8.0+ (API 26). Wireless ADB pairing requires Android 11+ (API 30).
@@ -57,11 +95,8 @@ instead of the standard on-device installer. That means:
 
 ## Getting the app
 
-- **Releases:** download `ShellInstaller.apk` from the repository's
-  [Releases](https://github.com/rubiidev18alt/PackageInstaller/releases) page (the `nightly`
-  prerelease is rebuilt automatically on every push).
-- **CI artifact:** each push also uploads a `ShellInstaller-apk` artifact on the
-  [Actions](https://github.com/rubiidev18alt/PackageInstaller/actions) tab.
+- **Releases:** download `ShellInstaller-vX.Y.Z.apk` from this fork's
+  [Releases](https://github.com/MoshEZeeD/Sh311Installer/releases) page.
 - **Build it yourself:** see [Building](#building).
 
 Install the APK once (you can use the system installer for this first step), then set up a backend
@@ -116,6 +151,8 @@ used automatically (or select it explicitly under *Preferred backend*).
 | Allow downgrade | Adds `pm -d`; install an older version over a newer one. |
 | Grant all runtime permissions | Adds `pm -g`; skip first-launch permission prompts. |
 | Bypass low-target-SDK block | On Android 14+, automatically retries legacy apps with `--bypass-low-target-sdk-block`. |
+| Installer identity | Spoof installer package/source/reason/URI — presets for Play Store, Galaxy Store, AppGallery, Amazon, local file, or none. |
+| Ad/tracker neuter | After install, revoke ad permissions and apply appops restrictions. |
 | Preferred backend | Auto (Shizuku → ADB → Root), or force a specific backend. |
 
 ## How it works
@@ -159,13 +196,13 @@ Requirements: JDK 17, Android SDK (API 35). The Gradle wrapper fetches Gradle 8.
 Only Google Maven and Maven Central are needed — the ADB + SPAKE2 libraries are vendored in the
 `:adb` module, so there is no JitPack dependency.
 
-CI (`.github/workflows/build.yml`) builds the APK on every push and publishes it as an artifact and a
-rolling `nightly` prerelease.
-
 ## Credits & licenses
 
 This project is licensed under **GPL-3.0-or-later** (see [LICENSE](LICENSE)). It builds on:
 
+- **Upstream:** [rubiidev18alt/PackageInstaller](https://github.com/rubiidev18alt/PackageInstaller)
+  — the original Shell Installer this fork is based on.
+- Fork additions & maintenance by [**MoshEZeeD**](https://github.com/MoshEZeeD).
 - [Shizuku API](https://github.com/RikkaApps/Shizuku-API) — Apache-2.0 (RikkaApps).
 - [libadb-android](https://github.com/MuntashirAkon/libadb-android) — Apache-2.0 / GPL-3.0 (Muntashir
   Al-Islam), vendored in `:adb`.
