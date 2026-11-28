@@ -88,11 +88,12 @@ class InstallLogActivity : AppCompatActivity() {
     private fun setLog(log: String) {
         val fx = Prefs.terminalEffects(this)
         val installing = InstallManager.state.value is InstallManager.State.Installing
-        // Animate while installing, and keep typing the tail into the final state.
+        // Animate while installing, and keep typing the tail into the final state —
+        // hurrying so the reveal lands with the finished install instead of lagging.
         // A fresh view of a finished log shows instantly instead of replaying.
         val animating = fx && (installing || logReveal.isContinuationOf(log))
         if (animating) {
-            logReveal.setLog(log)
+            logReveal.setLog(log, hurry = !installing)
         } else {
             logReveal.cancel()
             binding.tvFullLog.text = if (fx) LogFormatter.format(log) else log

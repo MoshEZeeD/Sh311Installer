@@ -426,11 +426,15 @@ class InstallActivity : AppCompatActivity() {
         binding.btnDetails.setIconResource(if (detailsExpanded) R.drawable.ic_expand_less else R.drawable.ic_expand_more)
         binding.detailsSection.visibility = if (hasLog && detailsExpanded) View.VISIBLE else View.GONE
         if (hasLog && detailsExpanded) {
-            setLogText(logText, animate = state is InstallManager.State.Installing)
+            setLogText(
+                logText,
+                animate = state is InstallManager.State.Installing,
+                hurry = state is InstallManager.State.Success || state is InstallManager.State.Failed
+            )
         }
     }
 
-    private fun setLogText(logText: String, animate: Boolean) {
+    private fun setLogText(logText: String, animate: Boolean, hurry: Boolean = false) {
         val fx = Prefs.terminalEffects(this)
         if (!fx) {
             logReveal.cancel()
@@ -442,7 +446,7 @@ class InstallActivity : AppCompatActivity() {
         // instead of snapping the full log in at once. Only show instantly when this is
         // a fresh view of an already-finished log.
         if (animate || logReveal.isContinuationOf(logText)) {
-            logReveal.setLog(logText)
+            logReveal.setLog(logText, hurry = hurry)
         } else {
             logReveal.cancel()
             binding.tvLog.text = LogFormatter.format(logText)

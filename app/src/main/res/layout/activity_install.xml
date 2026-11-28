@@ -246,7 +246,7 @@
                 android:textAppearance="?attr/textAppearanceBodySmall"
                 android:textColor="#F2FFFFFF"
                 android:shadowColor="#4000E676"
-                android:shadowRadius="6"
+                android:shadowRadius="2"
                 android:textIsSelectable="true"
                 tools:text="pm install-create…" />
         </ScrollView>

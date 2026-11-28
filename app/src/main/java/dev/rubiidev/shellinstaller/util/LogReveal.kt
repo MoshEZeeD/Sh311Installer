@@ -18,6 +18,7 @@ class LogReveal(
 
     private var source = ""
     private var resolved = 0
+    private var hurry = false
 
     /** True while a log is loaded, even if the reveal already caught up. */
     val hasContent: Boolean get() = source.isNotEmpty()
@@ -25,7 +26,12 @@ class LogReveal(
     /** True when [text] is the same log with more content appended. */
     fun isContinuationOf(text: String): Boolean = source.isNotEmpty() && text.startsWith(source)
 
-    fun setLog(text: String) {
+    /**
+     * [hurry] speeds the reveal up so the tail catches up with an already-finished install
+     * instead of lagging behind the Done button. Still reveals per character, just faster.
+     */
+    fun setLog(text: String, hurry: Boolean = false) {
+        this.hurry = hurry
         if (text == source) return
         if (text.length < resolved) resolved = 0
         source = text
@@ -49,11 +55,19 @@ class LogReveal(
                     push(glint = false)
                     return
                 }
-                resolved += (3 + remaining / 400).coerceAtMost(remaining)
+                resolved += if (hurry) {
+                    (10 + remaining / 80).coerceAtMost(remaining)
+                } else {
+                    (3 + remaining / 400).coerceAtMost(remaining)
+                }
                 push()
                 // Pause briefly after each completed line so lines appear one at a time
                 // instead of streaming continuously.
-                val delay = if (resolved > 0 && source[resolved - 1] == '\n') LINE_PAUSE_MS else TICK_MS
+                val delay = if (resolved > 0 && source[resolved - 1] == '\n') {
+                    if (hurry) HURRY_LINE_PAUSE_MS else LINE_PAUSE_MS
+                } else {
+                    if (hurry) HURRY_TICK_MS else TICK_MS
+                }
                 handler.postDelayed(this, delay)
             }
         }
@@ -61,15 +75,22 @@ class LogReveal(
         handler.post(r)
     }
 
+    private var pushes = 0
+
     private fun push(glint: Boolean = true) {
         val shown = source.substring(0, resolved)
         onUpdate(LogFormatter.format(shown, if (glint) GLINT_TAIL else 0))
-        onScroll()
+        // Scrolling every tick makes the view jump once per frame — throttle it and
+        // always scroll on the final (glint-free) push so the end state is visible.
+        if (!glint || ++pushes % SCROLL_EVERY == 0) onScroll()
     }
 
     companion object {
         private const val TICK_MS = 32L
         private const val LINE_PAUSE_MS = 160L
+        private const val HURRY_TICK_MS = 8L
+        private const val HURRY_LINE_PAUSE_MS = 40L
         private const val GLINT_TAIL = 16
+        private const val SCROLL_EVERY = 4
     }
 }
